@@ -39,6 +39,16 @@ window.DashStore = {
       return;
     }
     localStorage.setItem(this.key, value);
+  },
+  async getHealth(day) {
+    if (!this.useSupabase()) return null;
+    const c = window.DASHBOARD_CONFIG;
+    const r = await fetch(c.supabaseUrl + '/rest/v1/health_metrics?day=eq.' + day + '&select=metrics', {
+      headers: { apikey: c.supabaseAnonKey, Authorization: 'Bearer ' + c.supabaseAnonKey }
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return rows && rows[0] ? rows[0].metrics : null;
   }
 };
 </script>
@@ -1033,6 +1043,8 @@ class Component extends DCLogic {
         habits,
         chatMessages: Array.isArray(d.chatMessages) ? d.chatMessages : [],
       });
+      const h = await window.DashStore.getHealth(today).catch(() => null);
+      if (h) this.setState({ health: h });
     } catch (e) { /* erster Start */ }
   }
 
@@ -1137,6 +1149,7 @@ class Component extends DCLogic {
   }
 
   renderVals() {
+    const H = this.state.health || {};
     const _now = new Date();
     const _wd = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][_now.getDay()];
     const _mL = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
@@ -1283,9 +1296,9 @@ class Component extends DCLogic {
 
     const macroKcalFactor = { Protein: 4, Carbs: 4, Fett: 9 };
     const macrosRaw = [
-      { name: 'Protein', g: 132, goal: 160 },
-      { name: 'Carbs', g: 165, goal: 220 },
-      { name: 'Fett', g: 58, goal: 70 },
+      { name: 'Protein', g: H.protein_g ?? 132, goal: H.protein_goal ?? 195 },
+      { name: 'Carbs', g: H.carbs_g ?? 165, goal: H.carbs_goal ?? 220 },
+      { name: 'Fett', g: H.fat_g ?? 58, goal: H.fat_goal ?? 70 },
     ];
     const macros = macrosRaw.map(m => ({ ...m, pct: Math.round((m.g / m.goal) * 100), color: 'oklch(0.72 0.17 320)' }));
     const macrosDetailedRaw = macros.map(m => ({ ...m, kcal: m.g * (macroKcalFactor[m.name] || 4) }));
@@ -1375,10 +1388,10 @@ class Component extends DCLogic {
     }).join(' ');
     const msciTimestamp = 'Stand 16:42 Uhr';
 
-    const kcalIntake = 1840, kcalGoal = 2200;
-    const resting = 1750, activity = 420;
+    const kcalIntake = H.kcal_in ?? 1840, kcalGoal = H.kcal_goal ?? 2200;
+    const resting = H.resting_kcal ?? 1750, activity = H.active_kcal ?? 420;
     const outputTotal = resting + activity;
-    const steps = 8400, stepsGoal = 10000;
+    const steps = H.steps ?? 8400, stepsGoal = 10000;
 
     const diffToday = kcalIntake - outputTotal;
     const diffTodayLabel = (diffToday > 0 ? '+' : '') + diffToday + ' kcal';
@@ -1403,10 +1416,10 @@ class Component extends DCLogic {
       color: v > 150 ? 'oklch(0.7 0.16 30)' : (v < -150 ? 'oklch(0.72 0.15 150)' : 'oklch(0.78 0.13 90)'),
     }));
 
-    const sleepScore = 61;
-    const hrv = 42, hrvBaseline = 55;
-    const rhr = 54, rhrBaseline = 50;
-    const spo2 = 96;
+    const sleepScore = H.sleep_score ?? (H.sleep_h ? Math.min(100, Math.round(H.sleep_h / 7.5 * 100)) : 61);
+    const hrv = H.hrv ?? 42, hrvBaseline = H.hrv_baseline ?? 55;
+    const rhr = H.rhr ?? 54, rhrBaseline = H.rhr_baseline ?? 50;
+    const spo2 = H.spo2 ?? 96;
     const hrvDeltaLabel = (hrv < hrvBaseline ? '−' : '+') + Math.abs(hrv - hrvBaseline) + ' vs. Basis';
     const hrvDeltaColor = hrv < hrvBaseline * 0.9 ? 'oklch(0.7 0.16 30)' : 'oklch(0.72 0.15 150)';
     const rhrDeltaLabel = (rhr > rhrBaseline ? '+' : '−') + Math.abs(rhr - rhrBaseline) + ' vs. Basis';
