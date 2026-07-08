@@ -1147,7 +1147,7 @@ class Component extends DCLogic {
     return 'Du bist Claude, der Assistent in einem persönlichen Lebens-Dashboard. Antworte knapp (max. ca. 80 Wörter), direkt, konkret, auf Deutsch und ohne Markdown-Formatierung. Beziehe dich auf die Dashboard-Daten, wenn es passt.\n'
       + 'Du kannst das Dashboard direkt verändern: hänge ans ENDE deiner Antwort pro Aktion eine eigene Zeile in exakt diesem Format an: [CMD]{json-in-einer-zeile}. Verfügbare Aktionen:\n'
       + '{"action":"add_todo","text":"...","priority":"Hoch|Mittel|Niedrig"} · {"action":"complete_todo","text":"Teiltext"} · {"action":"delete_todo","text":"Teiltext"} · {"action":"toggle_habit","name":"Teilname","done":true}\n'
-      + '{"action":"set_sport","sessions":[{"name":"...","time":"HH:MM","duration":"45 min","detail":"...","status":"Geplant|Erledigt"}]} — ersetzt die HEUTIGE Sporteinheiten-Liste komplett; bei Ergaenzungen bestehende Einheiten mit uebernehmen.\n'
+      + '{"action":"set_sport","sessions":[{"name":"...","time":"HH:MM","duration":"45 min","detail":"...","status":"Geplant|Erledigt"}]} — ersetzt die HEUTIGE Sporteinheiten-Liste komplett; bei Ergaenzungen bestehende Einheiten mit uebernehmen. Einheiten mit Uhrzeit erscheinen AUTOMATISCH im Kalender — fuer Training NIEMALS zusaetzlich add_event nutzen. Umgekehrt erscheinen Kalendereintraege mit Tag Sport/Kraft/Ausdauer automatisch im Sport-Modul.\n'
       + '{"action":"add_event","title":"...","time":"HH:MM","date":"YYYY-MM-DD (optional, sonst heute)","tag":"Meeting|Fokus|Ausdauer|Privat|Termin","dur_min":60} · {"action":"delete_event","title":"Teiltext","date":"optional"}\n'
       + '{"action":"set_goals","kcal_goal":2600,"protein_goal":195,"carbs_goal":300,"fat_goal":70} — nur genannte Felder senden.\n'
       + '{"action":"set_finance","netto":3240,"saved":780} · {"action":"set_fixkosten","name":"...","amount":100} (amount 0 = entfernen) · {"action":"set_income","name":"...","amount":100} (amount 0 = entfernen)\n'
@@ -1323,10 +1323,20 @@ class Component extends DCLogic {
       { time: '17:30', title: 'Laufeinheit Zone 2', tag: 'Ausdauer', startMin: 17 * 60 + 30, durMin: 45 },
       { time: '19:30', title: 'Abendessen mit Freunden', tag: 'Privat', startMin: 19 * 60 + 30, durMin: 90 },
     ];
+    const _todayIso = new Date().toISOString().slice(0, 10);
     const _liveEvents = (Array.isArray(this.state.events) ? this.state.events : [])
-      .filter(e => !e.date || e.date === new Date().toISOString().slice(0, 10));
-    const dayEventsRaw = _liveEvents.length
-      ? _liveEvents.map(e => {
+      .filter(e => !e.date || e.date === _todayIso);
+    const _q = t => String(t || '').toLowerCase();
+    const _sportTag = w => /kraft|push|pull|beine|ober|unter|gym|hantel|band/.test(_q(w.name + ' ' + w.detail)) ? 'Kraft'
+      : (/lauf|run|zone|intervall|tempo|rad|schwimm|cardio|km/.test(_q(w.name + ' ' + w.detail)) ? 'Ausdauer' : 'Sport');
+    const _sportEvents = (Array.isArray(this.state.sport) ? this.state.sport : [])
+      .filter(w => /^\d{1,2}:\d{2}$/.test(String(w.time || '')))
+      .map(w => ({ time: w.time, title: w.name || 'Training', tag: _sportTag(w),
+                   dur_min: Number((String(w.duration || '').match(/\d+/) || [60])[0]) }))
+      .filter(se => !_liveEvents.some(e => e.time === se.time && _q(e.title) === _q(se.title)));
+    const _allEvents = _liveEvents.concat(_sportEvents);
+    const dayEventsRaw = _allEvents.length
+      ? _allEvents.map(e => {
           const _p = String(e.time || '12:00').split(':');
           return { time: e.time || '12:00', title: e.title || 'Termin', tag: e.tag || 'Termin',
                    startMin: (Number(_p[0]) || 0) * 60 + (Number(_p[1]) || 0), durMin: Number(e.dur_min) || 60 };
@@ -1401,8 +1411,16 @@ class Component extends DCLogic {
     const demoWorkouts = [
       { name: 'Lauftraining', time: '17:30', duration: '45 min', detail: 'Zone 2 · Ziel 8 km', status: 'Geplant' },
     ];
-    const workouts = (Array.isArray(this.state.sport) && this.state.sport.length)
-      ? this.state.sport.map(w => ({ name: w.name || 'Einheit', time: w.time || '', duration: w.duration || '', detail: w.detail || '', status: w.status || 'Geplant' }))
+    const _wToday = new Date().toISOString().slice(0, 10);
+    const _wq = t => String(t || '').toLowerCase();
+    const _liveSport = (Array.isArray(this.state.sport) ? this.state.sport : [])
+      .map(w => ({ name: w.name || 'Einheit', time: w.time || '', duration: w.duration || '', detail: w.detail || '', status: w.status || 'Geplant' }));
+    const _sportFromCal = (Array.isArray(this.state.events) ? this.state.events : [])
+      .filter(e => (!e.date || e.date === _wToday) && ['Sport', 'Kraft', 'Ausdauer'].includes(e.tag))
+      .filter(e => !_liveSport.some(w => _wq(w.name) === _wq(e.title) && w.time === e.time))
+      .map(e => ({ name: e.title || 'Training', time: e.time || '', duration: (Number(e.dur_min) || 60) + ' min', detail: e.tag, status: 'Geplant' }));
+    const workouts = (_liveSport.length || _sportFromCal.length)
+      ? _liveSport.concat(_sportFromCal)
       : demoWorkouts;
     const weekWorkoutsRaw = [
       { day: 'Mo', label: 'Ruhetag', isToday: false },
