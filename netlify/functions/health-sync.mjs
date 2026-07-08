@@ -20,10 +20,13 @@ export default async (req) => {
 
   const day = /^\d{4}-\d{2}-\d{2}$/.test(body.day || '') ? body.day : new Date().toISOString().slice(0, 10);
   const allowed = ['steps','active_kcal','resting_kcal','kcal_in','kcal_goal','protein_g','protein_goal','carbs_g','carbs_goal','fat_g','fat_goal','sleep_h','sleep_score','hrv','hrv_baseline','rhr','rhr_baseline','spo2','weight_kg'];
+  const oneDecimal = ['sleep_h', 'weight_kg'];
   const incoming = {};
   for (const k of allowed) {
     const v = Number(body[k]);
-    if (body[k] !== undefined && body[k] !== null && body[k] !== '' && !Number.isNaN(v)) incoming[k] = v;
+    if (body[k] !== undefined && body[k] !== null && body[k] !== '' && !Number.isNaN(v)) {
+      incoming[k] = oneDecimal.includes(k) ? Math.round(v * 10) / 10 : Math.round(v);
+    }
   }
   if (!Object.keys(incoming).length) return json({ error: 'Keine gültigen Messwerte übergeben.', erlaubt: allowed }, 400);
 

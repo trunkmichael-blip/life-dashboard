@@ -1062,7 +1062,15 @@ class Component extends DCLogic {
         chatMessages: Array.isArray(d.chatMessages) ? d.chatMessages : [],
       });
       const h = await window.DashStore.getHealth(today).catch(() => null);
-      if (h) this.setState({ health: h });
+      if (h) {
+        const _oneDec = ['sleep_h', 'weight_kg'];
+        const _hr = {};
+        for (const k in h) {
+          const v = Number(h[k]);
+          _hr[k] = Number.isNaN(v) ? h[k] : (_oneDec.includes(k) ? Math.round(v * 10) / 10 : Math.round(v));
+        }
+        this.setState({ health: _hr });
+      }
     } catch (e) { /* erster Start */ }
   }
 
