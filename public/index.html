@@ -1043,11 +1043,20 @@ class Component extends DCLogic {
         habits = habits.map(h => ({ ...h, streak: h.done ? h.streak : 0, done: false }));
       }
       const newDay = d.day && d.day !== today;
+      // Migration/Normalisierung: Alt-Daten an die aktuelle Kategorisierungs-Systematik angleichen
+      const _oldCats = ['Krafttraining', 'Lauftraining', 'Ausdauer', 'Fu\u00dfball', 'Mobility', 'Training', 'Sport', 'Kraft'];
+      const _normSport = w => {
+        const _d = String(w.detail || '').trim();
+        return _oldCats.includes(_d) ? { ...w, detail: '' } : w;
+      };
+      const _normEvent = e => ['Sport', 'Kraft', 'Ausdauer'].includes(e.tag)
+        ? { ...e, tag: this.classifySport(e.title).tag }
+        : e;
       this.setState({
         todos: Array.isArray(d.todos) ? d.todos : this.state.todos,
         habits,
-        sport: newDay ? [] : (Array.isArray(d.sport) ? d.sport : []),
-        events: Array.isArray(d.events) ? d.events : [],
+        sport: newDay ? [] : (Array.isArray(d.sport) ? d.sport : []).map(_normSport),
+        events: (Array.isArray(d.events) ? d.events : []).map(_normEvent),
         goals: d.goals || {},
         financeCfg: d.financeCfg || {},
         chatMessages: Array.isArray(d.chatMessages) ? d.chatMessages : [],
