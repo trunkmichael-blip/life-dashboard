@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lebens-Dashboard</title>
-<script>window.DASHBOARD_VERSION='v2026-07-09-3';console.log('Lebens-Dashboard '+window.DASHBOARD_VERSION);</script>
+<script>window.DASHBOARD_VERSION='v2026-07-09-4';console.log('Lebens-Dashboard '+window.DASHBOARD_VERSION);</script>
 <script src="config.js"></script>
 <script>
 // Storage-Adapter: localStorage (Standard) oder Supabase (wenn in config.js hinterlegt)
@@ -1076,7 +1076,10 @@ class Component extends DCLogic {
       const _from = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
       const week = await window.DashStore.getHealthWeek(_from).catch(() => null);
       if (Array.isArray(week) && week.length) this.setState({ healthWeek: week });
-      const h = await window.DashStore.getHealth(today).catch(() => null);
+      let h = await window.DashStore.getHealth(today).catch(() => null);
+      if (!h && Array.isArray(week) && week.length) {
+        h = week[week.length - 1].metrics || null; // jüngster verfügbarer Tag als Fallback
+      }
       if (h) {
         const _oneDec = ['sleep_h', 'weight_kg'];
         const _hr = {};
