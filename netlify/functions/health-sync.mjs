@@ -19,7 +19,7 @@ export default async (req) => {
   try { body = await req.json(); } catch { return json({ error: 'Ungültiges JSON.' }, 400); }
 
   const day = /^\d{4}-\d{2}-\d{2}$/.test(body.day || '') ? body.day : new Date().toISOString().slice(0, 10);
-  const allowed = ['steps','active_kcal','resting_kcal','kcal_in','kcal_goal','protein_g','protein_goal','carbs_g','carbs_goal','fat_g','fat_goal','sleep_h','sleep_score','hrv','hrv_baseline','rhr','rhr_baseline','spo2','weight_kg'];
+  const allowed = ['steps','active_kcal','resting_kcal','kcal_in','kcal_goal','protein_g','protein_goal','carbs_g','carbs_goal','fat_g','fat_goal','sleep_h','sleep_score','sleep_deep_min','sleep_rem_min','sleep_core_min','hrv','hrv_baseline','rhr','rhr_baseline','spo2','weight_kg'];
   const oneDecimal = ['sleep_h', 'weight_kg'];
   const incoming = {};
   for (const k of allowed) {

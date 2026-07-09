@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lebens-Dashboard</title>
-<script>window.DASHBOARD_VERSION='v2026-07-09-1';console.log('Lebens-Dashboard '+window.DASHBOARD_VERSION);</script>
+<script>window.DASHBOARD_VERSION='v2026-07-09-2';console.log('Lebens-Dashboard '+window.DASHBOARD_VERSION);</script>
 <script src="config.js"></script>
 <script>
 // Storage-Adapter: localStorage (Standard) oder Supabase (wenn in config.js hinterlegt)
@@ -40,6 +40,15 @@ window.DashStore = {
       return;
     }
     localStorage.setItem(this.key, value);
+  },
+  async getHealthWeek(fromDay) {
+    if (!this.useSupabase()) return null;
+    const c = window.DASHBOARD_CONFIG;
+    const r = await fetch(c.supabaseUrl + '/rest/v1/health_metrics?day=gte.' + fromDay + '&order=day.asc&select=day,metrics', {
+      headers: { apikey: c.supabaseAnonKey, Authorization: 'Bearer ' + c.supabaseAnonKey }
+    });
+    if (!r.ok) return null;
+    return await r.json();
   },
   async getHealth(day) {
     if (!this.useSupabase()) return null;
@@ -1064,6 +1073,9 @@ class Component extends DCLogic {
         financeCfg: d.financeCfg || {},
         chatMessages: Array.isArray(d.chatMessages) ? d.chatMessages : [],
       });
+      const _from = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+      const week = await window.DashStore.getHealthWeek(_from).catch(() => null);
+      if (Array.isArray(week) && week.length) this.setState({ healthWeek: week });
       const h = await window.DashStore.getHealth(today).catch(() => null);
       if (h) {
         const _oneDec = ['sleep_h', 'weight_kg'];
@@ -1573,7 +1585,12 @@ class Component extends DCLogic {
     const diffTodayLabel = (diffToday > 0 ? '+' : '') + diffToday + ' kcal';
     const diffTodayColor = diffToday > 150 ? 'oklch(0.7 0.16 30)' : (diffToday < -150 ? 'oklch(0.72 0.15 150)' : 'oklch(0.78 0.13 90)');
 
-    const diff7d = [-200, 100, 300, -150, 400, 250, -330];
+    const _diffVals = _wk.map(r => {
+      const m = r.metrics || {};
+      const _in = Number(m.kcal_in), _out = Number(m.resting_kcal) + Number(m.active_kcal);
+      return (!Number.isNaN(_in) && !Number.isNaN(_out) && _in > 0) ? Math.round(_in - _out) : null;
+    }).filter(v => v !== null);
+    const diff7d = _diffVals.length >= 2 ? _diffVals.slice(-7) : [-200, 100, 300, -150, 400, 250, -330];
     const diff7dAvg = Math.round(diff7d.reduce((a, b) => a + b, 0) / diff7d.length);
     const diff7dAvgLabel = (diff7dAvg > 0 ? '+' : '') + diff7dAvg + ' kcal';
     const diff7dAvgColor = diff7dAvg > 150 ? 'oklch(0.7 0.16 30)' : (diff7dAvg < -150 ? 'oklch(0.72 0.15 150)' : 'oklch(0.78 0.13 90)');
@@ -1603,12 +1620,23 @@ class Component extends DCLogic {
     const sleepColor = sleepScore < 50 ? 'oklch(0.7 0.16 30)' : (sleepScore < 75 ? 'oklch(0.78 0.13 90)' : 'oklch(0.72 0.15 150)');
     const sleepStatus = sleepScore < 50 ? 'Wenig erholsam' : (sleepScore < 75 ? 'Durchschnittlicher Schlaf' : 'Erholsamer Schlaf');
 
-    const recoveryScore = 54;
+    const _hasHealth = Object.keys(H).length > 0;
+    const recoveryScore = _hasHealth
+      ? Math.max(0, Math.min(100, Math.round(
+          0.4 * Math.min(100, (hrv / hrvBaseline) * 100) +
+          0.3 * Math.min(100, (rhrBaseline / Math.max(1, rhr)) * 100) +
+          0.3 * sleepScore)))
+      : 54;
     const recoveryColor = recoveryScore < 50 ? 'oklch(0.7 0.16 30)' : (recoveryScore < 70 ? 'oklch(0.78 0.13 90)' : 'oklch(0.72 0.15 150)');
     const recoveryStatus = recoveryScore < 50 ? 'Niedrige Erholung' : (recoveryScore < 70 ? 'Eingeschränkte Erholung' : 'Gute Erholung');
 
-    const hrvSeries = [50, 48, 45, 44, 47, 43, 42];
-    const rhrSeries = [50, 51, 49, 52, 53, 55, 54];
+    const _wk = Array.isArray(this.state.healthWeek) ? this.state.healthWeek : [];
+    const _series = (field, demo) => {
+      const vals = _wk.map(r => Number(r.metrics && r.metrics[field])).filter(v => !Number.isNaN(v) && v > 0);
+      return vals.length >= 2 ? vals.slice(-7) : demo;
+    };
+    const hrvSeries = _series('hrv', [50, 48, 45, 44, 47, 43, 42]);
+    const rhrSeries = _series('rhr', [50, 51, 49, 52, 53, 55, 54]);
     const hrvPoints = this.buildPoints(hrvSeries, 60, 24);
     const rhrPoints = this.buildPoints(rhrSeries, 60, 24);
     const hrvPointsBig = this.buildPoints(hrvSeries, 220, 50);
@@ -1617,9 +1645,9 @@ class Component extends DCLogic {
     const rhrChipBg = rhrDeltaColor.replace(')', ' / 15%)');
 
     const sleepStagesRaw = [
-      { name: 'Tiefschlaf', min: 70, color: 'oklch(0.55 0.16 320)' },
-      { name: 'REM', min: 90, color: 'oklch(0.72 0.17 320)' },
-      { name: 'Leichtschlaf', min: 240, color: 'oklch(0.5 0.02 260)' },
+      { name: 'Tiefschlaf', min: Number(H.sleep_deep_min) || (H.sleep_h ? Math.round(H.sleep_h * 60 * 0.175) : 70), color: 'oklch(0.55 0.16 320)' },
+      { name: 'REM', min: Number(H.sleep_rem_min) || (H.sleep_h ? Math.round(H.sleep_h * 60 * 0.225) : 90), color: 'oklch(0.72 0.17 320)' },
+      { name: 'Leichtschlaf', min: Number(H.sleep_core_min) || (H.sleep_h ? Math.round(H.sleep_h * 60 * 0.6) : 240), color: 'oklch(0.5 0.02 260)' },
     ];
     const sleepTotalMin = sleepStagesRaw.reduce((a, b) => a + b.min, 0);
     const sleepStages = sleepStagesRaw.map(s => ({ ...s, pct: Math.round((s.min / sleepTotalMin) * 100), hours: Math.floor(s.min / 60), mins: s.min % 60 }));
