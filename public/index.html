@@ -3,6 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lebens-Dashboard</title>
+<script>window.DASHBOARD_VERSION='v2026-07-09-1';console.log('Lebens-Dashboard '+window.DASHBOARD_VERSION);</script>
 <script src="config.js"></script>
 <script>
 // Storage-Adapter: localStorage (Standard) oder Supabase (wenn in config.js hinterlegt)
@@ -1024,6 +1025,7 @@ class Component extends DCLogic {
       habits: this.state.habits,
       sport: this.state.sport || [],
       events: this.state.events || [],
+      weekPlan: this.state.weekPlan || [],
       goals: this.state.goals || {},
       financeCfg: this.state.financeCfg || {},
       chatMessages: this.state.chatMessages.slice(-20),
@@ -1057,6 +1059,7 @@ class Component extends DCLogic {
         habits,
         sport: newDay ? [] : (Array.isArray(d.sport) ? d.sport : []).map(_normSport),
         events: (Array.isArray(d.events) ? d.events : []).map(_normEvent),
+        weekPlan: Array.isArray(d.weekPlan) ? d.weekPlan : [],
         goals: d.goals || {},
         financeCfg: d.financeCfg || {},
         chatMessages: Array.isArray(d.chatMessages) ? d.chatMessages : [],
@@ -1086,6 +1089,7 @@ class Component extends DCLogic {
         let events = Array.isArray(s.events) ? s.events.slice() : [];
         let goals = { ...(s.goals || {}) };
         let financeCfg = { ...(s.financeCfg || {}) };
+        let weekPlan = Array.isArray(s.weekPlan) ? s.weekPlan.slice() : [];
         const today = new Date().toISOString().slice(0, 10);
         const q = t => String(t || '').toLowerCase();
         for (const c of cmds) {
@@ -1107,6 +1111,19 @@ class Component extends DCLogic {
               duration: String(w.duration || ''), detail: String(w.detail || ''),
               status: String(w.status || 'Geplant'),
             }));
+          } else if (c.action === 'set_week_sport' && Array.isArray(c.plan)) {
+            const _days = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+            weekPlan = c.plan
+              .filter(e => e && _days.includes(e.day))
+              .map(e => ({ day: e.day, label: String(e.label || 'Ruhetag'), time: String(e.time || ''), duration: String(e.duration || '') }));
+          } else if (c.action === 'set_week_day' && c.day) {
+            const _days = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+            if (_days.includes(c.day)) {
+              weekPlan = weekPlan.filter(e => e.day !== c.day);
+              if (c.label && !/^ruhetag$/i.test(String(c.label))) {
+                weekPlan.push({ day: c.day, label: String(c.label), time: String(c.time || ''), duration: String(c.duration || '') });
+              }
+            }
           } else if (c.action === 'add_event' && c.title) {
             events.push({
               date: /^\d{4}-\d{2}-\d{2}$/.test(c.date || '') ? c.date : today,
@@ -1136,7 +1153,7 @@ class Component extends DCLogic {
             financeCfg[key] = list;
           }
         }
-        return { todos, habits, sport, events, goals, financeCfg };
+        return { todos, habits, sport, events, goals, financeCfg, weekPlan };
       }, () => this.persist());
     }
     return reply.replace(/\s*\[CMD\]\{[^\n]*\}\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
@@ -1165,6 +1182,8 @@ class Component extends DCLogic {
       + 'Du kannst das Dashboard direkt verändern: hänge ans ENDE deiner Antwort pro Aktion eine eigene Zeile in exakt diesem Format an: [CMD]{json-in-einer-zeile}. Verfügbare Aktionen:\n'
       + '{"action":"add_todo","text":"...","priority":"Hoch|Mittel|Niedrig"} · {"action":"complete_todo","text":"Teiltext"} · {"action":"delete_todo","text":"Teiltext"} · {"action":"toggle_habit","name":"Teilname","done":true}\n'
       + '{"action":"set_sport","sessions":[{"name":"...","time":"HH:MM","duration":"45 min","detail":"...","status":"Geplant|Erledigt"}]} — ersetzt die HEUTIGE Sporteinheiten-Liste komplett; bei Ergaenzungen bestehende Einheiten mit uebernehmen. Die Kategorie (Krafttraining/Lauftraining/Ausdauer/Fussball/Mobility) wird AUTOMATISCH aus der Bezeichnung abgeleitet — nicht ins detail-Feld schreiben. Einheiten mit Uhrzeit erscheinen AUTOMATISCH im Kalender — fuer Training NIEMALS zusaetzlich add_event nutzen. Umgekehrt erscheinen Kalendereintraege mit Tag Sport/Kraft/Ausdauer automatisch im Sport-Modul.\n'
+      + '{"action":"set_week_sport","plan":[{"day":"Mo","label":"Ruhetag"},{"day":"Di","label":"Gym Oberkoerper","time":"18:30","duration":"90 min"}]} — ersetzt den WIEDERKEHRENDEN Wochen-Trainingsplan komplett (fehlende Tage = Ruhetag). {"action":"set_week_day","day":"Sa","label":"Gym Unterkoerper","time":"10:00","duration":"90 min"} — aendert nur einen Wochentag (label "Ruhetag" = leeren). Der heutige Plan-Eintrag erscheint automatisch in HEUTE und im Kalender.\n'
+      + 'WICHTIG: Nennt der Nutzer Einheiten fuer konkrete Wochentage (heute, morgen, Samstag, ...), nutze set_week_day pro Tag bzw. set_week_sport — NICHT set_sport fuer kuenftige Tage. set_sport nur fuer ad-hoc Einheiten HEUTE, die vom Plan abweichen. Einmalige kuenftige Sondereinheiten: add_event mit Datum und passendem Tag.\n'
       + '{"action":"add_event","title":"...","time":"HH:MM","date":"YYYY-MM-DD (optional, sonst heute)","tag":"Meeting|Fokus|Ausdauer|Privat|Termin","dur_min":60} · {"action":"delete_event","title":"Teiltext","date":"optional"}\n'
       + '{"action":"set_goals","kcal_goal":2600,"protein_goal":195,"carbs_goal":300,"fat_goal":70} — nur genannte Felder senden.\n'
       + '{"action":"set_finance","netto":3240,"saved":780} · {"action":"set_fixkosten","name":"...","amount":100} (amount 0 = entfernen) · {"action":"set_income","name":"...","amount":100} (amount 0 = entfernen)\n'
@@ -1172,6 +1191,7 @@ class Component extends DCLogic {
       + 'Heute: ' + new Date().toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) + '.\n'
       + 'Termine heute:\n' + eventList + '\n'
       + 'Sport heute:\n' + sportList + '\n'
+      + 'Wochen-Trainingsplan: ' + ((Array.isArray(this.state.weekPlan) && this.state.weekPlan.length) ? this.state.weekPlan.map(e => e.day + ': ' + e.label + (e.time ? ' ' + e.time : '') + (e.duration ? ' (' + e.duration + ')' : '')).join(' | ') : '(noch Demo — nicht gesetzt)') + '\n'
       + 'To Dos:\n' + todos + '\n'
       + 'Habits:\n' + habits + '\n'
       + 'Health-Tageswerte (vom iPhone-Sync): ' + healthLine + '\n'
@@ -1355,7 +1375,11 @@ class Component extends DCLogic {
       .filter(e => !e.date || e.date === _todayIso);
     const _q = t => String(t || '').toLowerCase();
     const _sportTag = w => this.classifySport((w.name || '') + ' ' + (w.detail || '')).tag;
-    const _sportEvents = (Array.isArray(this.state.sport) ? this.state.sport : [])
+    const _dowCal = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date().getDay()];
+    const _planCal = (Array.isArray(this.state.weekPlan) ? this.state.weekPlan : [])
+      .filter(e => e.day === _dowCal && e.label && !/ruhetag|rest/i.test(e.label))
+      .map(e => ({ name: e.label, time: e.time || '', duration: e.duration || '', detail: '' }));
+    const _sportEvents = (Array.isArray(this.state.sport) ? this.state.sport : []).concat(_planCal)
       .filter(w => /^\d{1,2}:\d{2}$/.test(String(w.time || '')))
       .map(w => ({ time: w.time, title: w.name || 'Training', tag: _sportTag(w),
                    dur_min: Number((String(w.duration || '').match(/\d+/) || [60])[0]) }))
@@ -1452,10 +1476,16 @@ class Component extends DCLogic {
       .filter(e => !_liveSport.some(w => _wq(w.name) === _wq(e.title) && w.time === e.time))
       .map(e => ({ name: e.title || 'Training', time: e.time || '', duration: (Number(e.dur_min) || 60) + ' min',
                    detail: this.classifySport(e.title).category, status: 'Geplant' }));
-    const workouts = (_liveSport.length || _sportFromCal.length)
-      ? _liveSport.concat(_sportFromCal)
+    const _dowNow = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date().getDay()];
+    const _planToday = (Array.isArray(this.state.weekPlan) ? this.state.weekPlan : [])
+      .filter(e => e.day === _dowNow && e.label && !/ruhetag|rest/i.test(e.label))
+      .filter(e => !_liveSport.some(w => _wq(w.name) === _wq(e.label)) && !_sportFromCal.some(w => _wq(w.name) === _wq(e.label)))
+      .map(e => ({ name: e.label, time: e.time || '', duration: e.duration || '',
+                   detail: this.classifySport(e.label).category, status: 'Geplant' }));
+    const workouts = (_liveSport.length || _sportFromCal.length || _planToday.length)
+      ? _liveSport.concat(_sportFromCal, _planToday)
       : demoWorkouts;
-    const weekWorkoutsRaw = [
+    const demoWeekPlan = [
       { day: 'Mo', label: 'Ruhetag', isToday: false },
       { day: 'Di', label: 'Krafttraining Oberkörper', time: '18:30', type: 'Kraft', isToday: false },
       { day: 'Mi', label: 'Lauftraining 5 km', time: '18:00', type: 'Ausdauer', isToday: false },
@@ -1464,6 +1494,17 @@ class Component extends DCLogic {
       { day: 'Sa', label: 'Lauftraining 10 km', time: '11:30', type: 'Ausdauer', isToday: false },
       { day: 'So', label: 'Lauftraining Zone 2 · 45 min', time: '17:30', type: 'Ausdauer', isToday: true },
     ];
+    const _dowToday = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date().getDay()];
+    const _wpLive = Array.isArray(this.state.weekPlan) && this.state.weekPlan.length ? this.state.weekPlan : null;
+    const weekWorkoutsRaw = _wpLive
+      ? ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(d => {
+          const e = _wpLive.find(x => x.day === d);
+          if (!e || !e.label || /ruhetag|rest/i.test(e.label)) return { day: d, label: 'Ruhetag', isToday: d === _dowToday };
+          const _t = this.classifySport(e.label).tag;
+          return { day: d, label: e.label + (e.duration ? ' \u00b7 ' + e.duration : ''), time: e.time || '',
+                   type: _t === 'Kraft' ? 'Kraft' : (_t === 'Ausdauer' ? 'Ausdauer' : undefined), isToday: d === _dowToday };
+        })
+      : demoWeekPlan.map(w => ({ ...w, isToday: w.day === _dowToday }));
     const weekWorkouts = weekWorkoutsRaw.map(w => ({
       ...w,
       typeColor: w.type ? this.tagColor(w.type) : 'oklch(0.5 0.02 280)',
