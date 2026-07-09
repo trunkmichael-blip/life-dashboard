@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lebens-Dashboard</title>
-<script>window.DASHBOARD_VERSION='v2026-07-09-2';console.log('Lebens-Dashboard '+window.DASHBOARD_VERSION);</script>
+<script>window.DASHBOARD_VERSION='v2026-07-09-3';console.log('Lebens-Dashboard '+window.DASHBOARD_VERSION);</script>
 <script src="config.js"></script>
 <script>
 // Storage-Adapter: localStorage (Standard) oder Supabase (wenn in config.js hinterlegt)
@@ -1278,6 +1278,11 @@ class Component extends DCLogic {
   renderVals() {
     const H = this.state.health || {};
     const G = this.state.goals || {};
+    const _wk = Array.isArray(this.state.healthWeek) ? this.state.healthWeek : [];
+    const _series = (field, demo) => {
+      const vals = _wk.map(r => Number(r.metrics && r.metrics[field])).filter(v => !Number.isNaN(v) && v > 0);
+      return vals.length >= 2 ? vals.slice(-7) : demo;
+    };
     const _now = new Date();
     const _wd = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][_now.getDay()];
     const _mL = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
@@ -1630,11 +1635,6 @@ class Component extends DCLogic {
     const recoveryColor = recoveryScore < 50 ? 'oklch(0.7 0.16 30)' : (recoveryScore < 70 ? 'oklch(0.78 0.13 90)' : 'oklch(0.72 0.15 150)');
     const recoveryStatus = recoveryScore < 50 ? 'Niedrige Erholung' : (recoveryScore < 70 ? 'Eingeschränkte Erholung' : 'Gute Erholung');
 
-    const _wk = Array.isArray(this.state.healthWeek) ? this.state.healthWeek : [];
-    const _series = (field, demo) => {
-      const vals = _wk.map(r => Number(r.metrics && r.metrics[field])).filter(v => !Number.isNaN(v) && v > 0);
-      return vals.length >= 2 ? vals.slice(-7) : demo;
-    };
     const hrvSeries = _series('hrv', [50, 48, 45, 44, 47, 43, 42]);
     const rhrSeries = _series('rhr', [50, 51, 49, 52, 53, 55, 54]);
     const hrvPoints = this.buildPoints(hrvSeries, 60, 24);
